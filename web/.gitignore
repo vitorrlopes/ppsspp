@@ -1,3 +1,4 @@
 # Build output (web/build.sh)
 build/
 dist/
+.netlify/
