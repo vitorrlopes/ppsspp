@@ -1274,8 +1274,30 @@ void CallSyscall(MIPSState *mips, MIPSOpcode op) {
 	CallSyscallWithPC(mips, op, 0);
 }
 
+// A game is calling into a library whose HLE is off so the real module can run, but no module ever
+// provided it: the boot-time check saw an mpeg.prx on the disc, say, and the game didn't load it, or
+// loading it failed. Every call would fail from here on, and a game waiting on its video waits
+// forever (Need for Speed: Most Wanted 5-1-0 on the web build, stuck on sceMpegGetAvcAu). Fall back
+// to our HLE for the rest of the run, as sceUtility does when the firmware lacks the module.
+static void FallBackToHLEForUnresolvedImport(u32 pc) {
+	std::string library, importingModule;
+	u32 nid = 0;
+	if (!pc || !KernelFindImportByStubAddr(pc, &library, &nid, &importingModule)) {
+		return;
+	}
+	for (const HLEModuleMeta &meta : g_moduleMeta) {
+		if (meta.importName && library == meta.importName && meta.disableFlag != (DisableHLEFlags)0 &&
+			HLEFallBackToHLE(meta.disableFlag)) {
+			WARN_LOG(Log::HLE, "%s called %s, which no loaded module provides - using the HLE %s from now on",
+				importingModule.c_str(), library.c_str(), library.c_str());
+			return;
+		}
+	}
+}
+
 void CallSyscallUnresolvedAtPC(MIPSState *mips, u32 pc) {
 	LogBadSyscallAtPC(pc, false);
+	FallBackToHLEForUnresolvedImport(pc);
 	// Same as the !info path in CallSyscallWithPC - the call has to leave an error in v0,
 	// otherwise the caller sees a stale value and thinks the unresolved import succeeded.
 	RETURN(SCE_KERNEL_ERROR_LIBRARY_NOT_YET_LINKED);
