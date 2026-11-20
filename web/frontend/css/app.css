@@ -195,6 +195,13 @@ select {
 	z-index: 2;
 	pointer-events: none;
 	--size: min(13vmin, 64px);
+	--edge: max(16px, env(safe-area-inset-left));
+	--edge-right: max(16px, env(safe-area-inset-right));
+	--bottom: max(12px, env(safe-area-inset-bottom));
+	/* Stacked so nothing overlaps: the stick at the bottom, the d-pad above it. */
+	--stick-bottom: var(--bottom);
+	--dpad-bottom: calc(var(--stick-bottom) + var(--size) * 2.5);
+	--face-bottom: calc(var(--bottom) + var(--size) * 1.4);
 }
 .touch [data-button], .touch [data-stick] {
 	pointer-events: auto;
@@ -214,12 +221,11 @@ select {
 
 .touch .dpad, .touch .face {
 	position: absolute;
-	bottom: calc(max(16px, env(safe-area-inset-bottom)) + var(--size) * 1.4);
 	width: calc(var(--size) * 3);
 	height: calc(var(--size) * 3);
 }
-.touch .dpad { left: max(16px, env(safe-area-inset-left)); }
-.touch .face { right: max(16px, env(safe-area-inset-right)); }
+.touch .dpad { left: var(--edge); bottom: var(--dpad-bottom); }
+.touch .face { right: var(--edge-right); bottom: var(--face-bottom); }
 .touch .dpad [data-button] { width: var(--size); height: var(--size); border-radius: 8px; }
 .touch .face [data-button] { width: var(--size); height: var(--size); border-radius: 50%; font-size: calc(var(--size) * 0.45); }
 .touch .up, .touch .triangle { left: var(--size); top: 0; }
@@ -232,8 +238,8 @@ select {
 .touch .square { color: #f2a6e0; }
 
 .touch [data-stick] {
-	left: calc(max(16px, env(safe-area-inset-left)) + var(--size) * 0.4);
-	bottom: max(12px, env(safe-area-inset-bottom));
+	left: calc(var(--edge) + var(--size) * 0.4);
+	bottom: var(--stick-bottom);
 	width: calc(var(--size) * 2.2);
 	height: calc(var(--size) * 2.2);
 	border-radius: 50%;
@@ -250,7 +256,7 @@ select {
 .touch .center-buttons {
 	position: absolute;
 	left: 50%;
-	bottom: max(16px, env(safe-area-inset-bottom));
+	bottom: var(--bottom);
 	transform: translateX(-50%);
 	width: calc(var(--size) * 3.6);
 	height: calc(var(--size) * 0.6);
@@ -269,8 +275,14 @@ select {
 /* Portrait: the picture sits on top, so the controls get the bottom half. */
 @media (orientation: portrait) {
 	#player #canvas { height: 50%; }
-	.touch { --size: min(16vw, 72px); }
-	.touch .shoulder { top: calc(50% + 12px); }
+	/* Narrow enough for the d-pad and face buttons side by side; SELECT/START get the bottom row. */
+	.touch {
+		--size: min(13vw, 72px);
+		--stick-bottom: calc(var(--bottom) + var(--size) * 1.0);
+		--face-bottom: var(--dpad-bottom);
+	}
+	/* Just above the d-pad, so they follow the stack rather than the picture. */
+	.touch .shoulder { top: auto; bottom: calc(var(--dpad-bottom) + var(--size) * 3 + 10px); }
 	.touch .shoulder.right { right: max(12px, env(safe-area-inset-right)); }
 }
 
