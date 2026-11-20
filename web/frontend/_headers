@@ -1,0 +1,19 @@
+# Netlify headers. COOP + COEP make the page cross-origin isolated, which the threaded WASM build
+# needs (SharedArrayBuffer).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: same-origin
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# The service worker decides when the app updates, so it must never be stale itself.
+/sw.js
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+/*.wasm
+  Content-Type: application/wasm

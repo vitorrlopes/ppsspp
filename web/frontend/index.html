@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+	<title>PPSSPP Web</title>
+	<meta name="description" content="Emulador de PSP no navegador, baseado no PPSSPP.">
+	<meta name="theme-color" content="#11151c">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+	<link rel="manifest" href="manifest.webmanifest">
+	<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+	<link rel="apple-touch-icon" href="icons/icon-192.png">
+	<link rel="stylesheet" href="css/app.css">
+	<script type="module" src="js/app.js"></script>
+</head>
+<body>
+	<!-- Library -->
+	<main id="library" class="screen">
+		<header class="topbar">
+			<h1><img src="icons/icon.svg" alt="" width="28" height="28"> PPSSPP <span>Web</span></h1>
+			<div class="actions">
+				<button id="btn-settings" class="icon-btn" data-i18n-title="settings" aria-label="Settings">⚙</button>
+				<button id="btn-about" class="icon-btn" data-i18n-title="about" aria-label="About">ⓘ</button>
+			</div>
+		</header>
+
+		<div id="update-banner" class="banner" hidden>
+			<span data-i18n="updateReady"></span>
+			<button id="btn-update" class="btn small" data-i18n="updateNow"></button>
+		</div>
+		<div id="boot-status" class="banner" data-i18n="booting"></div>
+
+		<section id="dropzone" class="dropzone">
+			<p data-i18n="dropHint"></p>
+			<label class="btn primary">
+				<span data-i18n="addGame"></span>
+				<input id="file-input" type="file" accept=".iso,.cso,.chd,.pbp,.elf,.prx" multiple hidden>
+			</label>
+			<div id="import-progress" class="progress" hidden><div></div><span></span></div>
+		</section>
+
+		<ul id="game-list" class="game-list"></ul>
+		<p id="empty-library" class="muted center" data-i18n="emptyLibrary" hidden></p>
+		<footer class="muted small center">
+			<span id="storage-info"></span>
+		</footer>
+	</main>
+
+	<!-- Player -->
+	<section id="player" class="screen" hidden>
+		<canvas id="canvas" tabindex="-1"></canvas>
+		<button id="btn-menu" class="icon-btn overlay-btn" aria-label="Menu">☰</button>
+		<div id="toast" class="toast" hidden></div>
+
+		<div id="touch-controls" class="touch" hidden>
+			<div class="shoulder left" data-button="L">L</div>
+			<div class="shoulder right" data-button="R">R</div>
+			<div class="dpad">
+				<div data-button="UP" class="up">▲</div>
+				<div data-button="LEFT" class="left">◀</div>
+				<div data-button="RIGHT" class="right">▶</div>
+				<div data-button="DOWN" class="down">▼</div>
+			</div>
+			<div class="stick" data-stick><div class="knob"></div></div>
+			<div class="face">
+				<div data-button="TRIANGLE" class="triangle">△</div>
+				<div data-button="SQUARE" class="square">□</div>
+				<div data-button="CIRCLE" class="circle">○</div>
+				<div data-button="CROSS" class="cross">✕</div>
+			</div>
+			<div class="center-buttons">
+				<div data-button="SELECT">SELECT</div>
+				<div data-button="START">START</div>
+			</div>
+		</div>
+
+		<div id="pause-menu" class="pause-menu" hidden>
+			<div class="panel">
+				<h2 data-i18n="paused"></h2>
+				<button class="btn primary" data-action="resume" data-i18n="resume"></button>
+				<div class="slots">
+					<span data-i18n="slot"></span>
+					<select id="state-slot">
+						<option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+					</select>
+					<button class="btn" data-action="save-state" data-i18n="saveState"></button>
+					<button class="btn" data-action="load-state" data-i18n="loadState"></button>
+				</div>
+				<button class="btn" data-action="fullscreen" data-i18n="fullscreen"></button>
+				<button class="btn" data-action="toggle-touch" data-i18n="touchControls"></button>
+				<button class="btn" data-action="settings" data-i18n="settings"></button>
+				<button class="btn" data-action="reset" data-i18n="reset"></button>
+				<button class="btn danger" data-action="quit" data-i18n="quit"></button>
+			</div>
+		</div>
+	</section>
+
+	<!-- Settings -->
+	<dialog id="settings-dialog">
+		<form method="dialog">
+			<h2 data-i18n="settings"></h2>
+			<p class="muted small" data-i18n="settingsHint"></p>
+			<div id="settings-list" class="settings-list"></div>
+			<div class="dialog-actions">
+				<button class="btn primary" value="close" data-i18n="close"></button>
+			</div>
+		</form>
+	</dialog>
+
+	<!-- About / licences -->
+	<dialog id="about-dialog">
+		<form method="dialog">
+			<h2 data-i18n="about"></h2>
+			<p data-i18n="aboutText"></p>
+			<h3 data-i18n="licenses"></h3>
+			<ul class="small">
+				<li><strong>PPSSPP</strong>: GPL-2.0-or-later. <a href="https://github.com/hrydgard/ppsspp" target="_blank" rel="noopener">github.com/hrydgard/ppsspp</a></li>
+				<li><strong>aemu_postoffice</strong>: GPL-3.0-only (SPDX: GPL-3.0-only). <a href="https://github.com/Kethen/aemu_postoffice" target="_blank" rel="noopener">github.com/Kethen/aemu_postoffice</a></li>
+				<li data-i18n="licenseCombined"></li>
+				<li><a href="licenses/PPSSPP-LICENSE.txt" target="_blank">PPSSPP (GPL-2.0)</a> · <a href="licenses/GPL-3.0.txt" target="_blank">GPL-3.0</a></li>
+			</ul>
+			<p class="small"><span data-i18n="sourceCode"></span> <a id="source-link" href="https://github.com/hrydgard/ppsspp" target="_blank" rel="noopener"></a></p>
+			<div class="dialog-actions">
+				<button class="btn primary" value="close" data-i18n="close"></button>
+			</div>
+		</form>
+	</dialog>
+</body>
+</html>
