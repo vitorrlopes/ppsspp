@@ -577,7 +577,6 @@ static void check_variables(CoreParameter &coreParam)
          g_Config.iLanguage = PSP_SYSTEMPARAM_LANGUAGE_CHINESE_SIMPLIFIED;
    }
 
-#ifndef __EMSCRIPTEN__
    var.key = "ppsspp_cpu_core";
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
    {
@@ -595,9 +594,6 @@ static void check_variables(CoreParameter &coreParam)
        // to experiment in future iOS versions or something...
        g_Config.iCpuCore = (int)CPUCore::IR_INTERPRETER;
    }
-#else
-   g_Config.iCpuCore = (int)CPUCore::INTERPRETER;
-#endif
 
    var.key = "ppsspp_fast_memory";
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
@@ -2117,6 +2113,9 @@ bool System_GetPropertyBool(SystemProperty prop) {
 #if PPSSPP_PLATFORM(IOS)
       bool can_jit;
       return (environ_cb(RETRO_ENVIRONMENT_GET_JIT_CAPABLE, &can_jit) && can_jit);
+#elif defined(__EMSCRIPTEN__)
+      // WebAssembly can't run code it generates. This also keeps the vertex decoder JIT off.
+      return false;
 #else
       return true;
 #endif
