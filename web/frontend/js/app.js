@@ -9,6 +9,7 @@ import {
 const SOURCE_URL = 'https://github.com/vitorrlopes/ppsspp';
 const OPTIONS_KEY = 'ppsspp.options';
 const TOUCH_KEY = 'ppsspp.touch';
+const HUD_KEY = 'ppsspp.hud';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -30,6 +31,7 @@ const ui = {
 	settingsList: $('#settings-list'),
 	aboutDialog: $('#about-dialog'),
 	updateBanner: $('#update-banner'),
+	hud: $('#hud'),
 };
 
 const emulator = new Emulator(ui.canvas);
@@ -199,6 +201,7 @@ function showPlayer(show) {
 	ui.player.hidden = !show;
 	ui.library.hidden = show;
 	ui.touch.hidden = !show || !readJson(TOUCH_KEY, prefersTouch());
+	ui.hud.hidden = !show || !readJson(HUD_KEY, false);
 	if (show) {
 		requestAnimationFrame(syncCanvasSize);
 	}
@@ -248,6 +251,10 @@ async function runMenuAction(action) {
 				await ui.player.requestFullscreen?.({ navigationUI: 'hide' });
 				await screen.orientation?.lock?.('landscape').catch(() => {});
 			}
+			break;
+		case 'toggle-hud':
+			writeJson(HUD_KEY, ui.hud.hidden);
+			ui.hud.hidden = !ui.hud.hidden;
 			break;
 		case 'toggle-touch': {
 			const on = ui.touch.hidden;
@@ -304,12 +311,26 @@ function syncCanvasSize() {
 
 function inputLoop() {
 	if (emulator.module) {
-		const { mask, stick } = input.poll();
+		const { mask, pressed, stick } = input.poll();
+		emulator.addPresses(pressed);
 		emulator.setButtons(mask);
 		emulator.setAnalog(0, stick[0]);
 		emulator.setAnalog(1, stick[1]);
 	}
 	requestAnimationFrame(inputLoop);
+}
+
+// Emulated frames per second, and the speed against a real PSP (59.94 fps).
+function startHud() {
+	let last = { time: performance.now(), frames: emulator.framesRun() };
+	setInterval(() => {
+		const now = { time: performance.now(), frames: emulator.framesRun() };
+		const fps = (now.frames - last.frames) * 1000 / (now.time - last.time);
+		last = now;
+		if (!ui.hud.hidden) {
+			ui.hud.textContent = `${fps.toFixed(0)} FPS · ${(fps / 59.94 * 100).toFixed(0)}%`;
+		}
+	}, 1000);
 }
 
 // Service worker and updates.
@@ -414,6 +435,7 @@ function init() {
 	input.attachTouch(ui.touch);
 	new ResizeObserver(syncCanvasSize).observe(ui.canvas);
 	requestAnimationFrame(inputLoop);
+	startHud();
 
 	boot();
 	refreshLibrary();

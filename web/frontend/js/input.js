@@ -40,6 +40,36 @@ function applyDeadzone(v) {
 	return Math.abs(v) < DEADZONE ? 0 : v;
 }
 
+// Eight-way d-pad: the direction from the cluster's center, in 45 degree sectors. The middle
+// is neutral, so a thumb resting there presses nothing.
+const DPAD_SECTORS = [
+	1 << Button.RIGHT, (1 << Button.RIGHT) | (1 << Button.DOWN), 1 << Button.DOWN, (1 << Button.DOWN) | (1 << Button.LEFT),
+	1 << Button.LEFT, (1 << Button.LEFT) | (1 << Button.UP), 1 << Button.UP, (1 << Button.UP) | (1 << Button.RIGHT),
+];
+
+function dpadBits(rect, x, y) {
+	const dx = x - (rect.left + rect.width / 2);
+	const dy = y - (rect.top + rect.height / 2);
+	if (Math.hypot(dx, dy) < rect.width * 0.12) {
+		return 0;
+	}
+	return DPAD_SECTORS[Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) & 7];
+}
+
+function nearest(elements, x, y) {
+	let best = null;
+	let bestDist = Infinity;
+	for (const el of elements) {
+		const r = el.getBoundingClientRect();
+		const dist = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2));
+		if (dist < bestDist) {
+			bestDist = dist;
+			best = el;
+		}
+	}
+	return best;
+}
+
 export class InputManager {
 	constructor() {
 		this.keyMask = 0;
@@ -47,6 +77,9 @@ export class InputManager {
 		this.keyStick = [0, 0];
 		this.touchStick = [0, 0];
 		this.enabled = false;
+		// Buttons that went down since the last poll, however briefly (see WebInput.pressedSince).
+		this.pressedSince = 0;
+		this._padMask = 0;
 		this._keys = new Set();
 		window.addEventListener('keydown', (e) => this._onKey(e, true));
 		window.addEventListener('keyup', (e) => this._onKey(e, false));
@@ -88,13 +121,15 @@ export class InputManager {
 				stick[s[0]] += s[1];
 			}
 		}
+		this.pressedSince |= mask & ~this.keyMask;
 		this.keyMask = mask;
 		this.keyStick = stick.map((v) => Math.max(-1, Math.min(1, v)));
 	}
 
-	// Called once per animation frame. Returns { mask, stick: [x, y] }.
+	// Called once per animation frame. Returns { mask, pressed, stick: [x, y] }, where pressed has
+	// the buttons that went down since the last call, even if they're already up again.
 	poll() {
-		let mask = this.keyMask | this.touchMask;
+		let padMask = 0;
 		let x = this.keyStick[0] + this.touchStick[0];
 		let y = this.keyStick[1] + this.touchStick[1];
 		for (const pad of navigator.getGamepads?.() ?? []) {
@@ -103,61 +138,82 @@ export class InputManager {
 			}
 			pad.buttons.forEach((b, i) => {
 				if (b.pressed && PADMAP[i] !== undefined) {
-					mask |= 1 << PADMAP[i];
+					padMask |= 1 << PADMAP[i];
 				}
 			});
 			x += applyDeadzone(pad.axes[0] ?? 0);
 			y += applyDeadzone(pad.axes[1] ?? 0);
 		}
+		const pressed = this.pressedSince | (padMask & ~this._padMask);
+		this.pressedSince = 0;
+		this._padMask = padMask;
 		if (!this.enabled) {
-			return { mask: 0, stick: [0, 0] };
+			return { mask: 0, pressed: 0, stick: [0, 0] };
 		}
-		return { mask, stick: [Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))] };
+		const mask = this.keyMask | this.touchMask | padMask;
+		return { mask, pressed, stick: [Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))] };
 	}
 
 	// Wires up the on-screen controls: elements with data-button="CROSS" etc., and one data-stick.
+	// Wires up the on-screen controls: the .dpad and .face clusters, the other data-button
+	// elements, and one data-stick. Each finger belongs to the control it first touched until it
+	// lifts, and drifting off a button's edge doesn't release it: thumbs holding accelerate and
+	// steer in a racing game drift a lot.
 	attachTouch(root) {
-		const pressed = new Map();  // pointerId -> bit
+		const active = new Map();  // pointerId -> button bitmask
+		const buttons = [...root.querySelectorAll('[data-button]')];
 		const update = () => {
 			let mask = 0;
-			for (const bit of pressed.values()) {
-				mask |= 1 << bit;
+			for (const bits of active.values()) {
+				mask |= bits;
 			}
+			this.pressedSince |= mask & ~this.touchMask;
 			this.touchMask = mask;
-		};
-		const buttonAt = (x, y) => {
-			const el = document.elementFromPoint(x, y)?.closest('[data-button]');
-			return el && root.contains(el) ? Button[el.dataset.button] : undefined;
-		};
-		// Sliding a finger from one button onto another (d-pad diagonals, say) follows the finger.
-		const onMove = (e) => {
-			if (!pressed.has(e.pointerId)) {
-				return;
+			for (const el of buttons) {
+				el.classList.toggle('pressed', (mask & (1 << Button[el.dataset.button])) !== 0);
 			}
-			const bit = buttonAt(e.clientX, e.clientY);
-			if (bit === undefined) {
-				pressed.delete(e.pointerId);
-			} else {
-				pressed.set(e.pointerId, bit);
-			}
-			update();
 		};
-		root.querySelectorAll('[data-button]').forEach((el) => {
+		const zone = (el, resolve) => {
 			el.addEventListener('pointerdown', (e) => {
 				e.preventDefault();
-				el.releasePointerCapture?.(e.pointerId);
-				pressed.set(e.pointerId, Button[el.dataset.button]);
+				el.setPointerCapture(e.pointerId);
+				active.set(e.pointerId, resolve(e));
 				navigator.vibrate?.(8);
 				update();
 			});
-		});
-		root.addEventListener('pointermove', onMove);
-		const release = (e) => {
-			pressed.delete(e.pointerId);
-			update();
+			el.addEventListener('pointermove', (e) => {
+				if (active.has(e.pointerId)) {
+					active.set(e.pointerId, resolve(e));
+					update();
+				}
+			});
+			const end = (e) => {
+				if (active.delete(e.pointerId)) {
+					update();
+				}
+			};
+			el.addEventListener('pointerup', end);
+			el.addEventListener('pointercancel', end);
+			el.addEventListener('lostpointercapture', end);
 		};
-		root.addEventListener('pointerup', release);
-		root.addEventListener('pointercancel', release);
+
+		const dpad = root.querySelector('.dpad');
+		if (dpad) {
+			zone(dpad, (e) => dpadBits(dpad.getBoundingClientRect(), e.clientX, e.clientY));
+		}
+		const face = root.querySelector('.face');
+		if (face) {
+			const faceButtons = [...face.querySelectorAll('[data-button]')];
+			zone(face, (e) => 1 << Button[nearest(faceButtons, e.clientX, e.clientY).dataset.button]);
+		}
+		for (const el of buttons) {
+			if (!el.closest('.dpad, .face')) {
+				zone(el, () => 1 << Button[el.dataset.button]);
+			}
+		}
+		// Holding a button is a long press. Unless the context menu is stopped, Chrome on Android
+		// opens it and cancels the touch, which let go of the button while the finger was still down.
+		root.addEventListener('contextmenu', (e) => e.preventDefault(), { capture: true });
 
 		const stick = root.querySelector('[data-stick]');
 		if (stick) {

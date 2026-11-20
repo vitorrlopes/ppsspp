@@ -57,7 +57,15 @@ struct WebInput {
 	std::atomic<int32_t> analog[4];     // Left X, left Y, right X, right Y, each -32768..32767.
 	std::atomic<uint32_t> canvasWidth;  // Wanted canvas size in device pixels. 0 = unknown.
 	std::atomic<uint32_t> canvasHeight;
+	// Buttons pressed since the last frame, set by JS with Atomics.or the moment they go down.
+	// A tap shorter than a frame (or than the gaps between frames, when emulation is slow)
+	// would otherwise fall between two input polls and never reach the game.
+	std::atomic<uint32_t> pressedSince;
 };
+
+// How many frames a press is held for at least, so a game that wants to see a button down on
+// more than one poll (or compares against the previous one) gets it.
+constexpr int MIN_PRESS_FRAMES = 4;
 
 // Counters for the page (FPS display, tests). Written here, read by JS.
 struct WebStats {
@@ -116,6 +124,7 @@ bool g_optionsUpdated = false;
 std::string g_gamePath;
 bool g_gameLoaded = false;
 bool g_paused = false;
+int g_pressFrames[16] = {};  // Frames left to hold each button for. Core thread only.
 bool g_shutdownRequested = false;
 retro_system_av_info g_avInfo{};
 retro_hw_render_callback g_hwRender{};
@@ -420,6 +429,11 @@ int16_t InputState(unsigned port, unsigned device, unsigned index, unsigned id) 
 	}
 	if (device == RETRO_DEVICE_JOYPAD) {
 		uint32_t buttons = g_input.buttons.load(std::memory_order_relaxed);
+		for (int bit = 0; bit < 16; bit++) {
+			if (g_pressFrames[bit] > 0) {
+				buttons |= 1u << bit;
+			}
+		}
 		if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
 			return (int16_t)(buttons & 0xFFFF);
 		}
@@ -595,6 +609,18 @@ int FramesDue() {
 	return frames;
 }
 
+// Turns presses the page saw since the last frame into a minimum hold, and counts down the rest.
+void LatchPresses() {
+	uint32_t pressed = g_input.pressedSince.exchange(0, std::memory_order_acquire);
+	for (int bit = 0; bit < 16; bit++) {
+		if (pressed & (1u << bit)) {
+			g_pressFrames[bit] = MIN_PRESS_FRAMES;
+		} else if (g_pressFrames[bit] > 0) {
+			g_pressFrames[bit]--;
+		}
+	}
+}
+
 void Tick() {
 	DrainCommands();
 	UpdateCanvasSize();
@@ -606,6 +632,7 @@ void Tick() {
 	int ran = 0;
 	double start = emscripten_get_now();
 	while (ran < frames && !g_shutdownRequested) {
+		LatchPresses();
 		retro_run();
 		ran++;
 	}

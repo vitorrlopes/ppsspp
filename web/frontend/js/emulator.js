@@ -17,6 +17,7 @@ const INPUT_BUTTONS = 0;
 const INPUT_ANALOG = 4;
 const INPUT_CANVAS_W = 20;
 const INPUT_CANVAS_H = 24;
+const INPUT_PRESSED_SINCE = 28;
 
 // Path where the core sees the OPFS root.
 export const OPFS_MOUNT = '/opfs';
@@ -142,6 +143,14 @@ export class Emulator extends EventTarget {
 
 	setButtons(mask) {
 		this._store32(INPUT_BUTTONS, mask);
+	}
+
+	// Buttons that went down since the last frame. They're held for a few frames at least, so a
+	// tap shorter than a frame still reaches the game.
+	addPresses(mask) {
+		if (mask && this.inputPtr) {
+			Atomics.or(this.module.HEAP32, (this.inputPtr + INPUT_PRESSED_SINCE) >> 2, mask);
+		}
 	}
 
 	setAnalog(index, value) {
