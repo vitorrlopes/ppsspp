@@ -108,7 +108,12 @@ bool MemArena::GrabMemSpace(size_t size) {
 }
 
 void MemArena::ReleaseSpace() {
-#ifndef NO_MMAP
+#ifdef NO_MMAP
+	// Find4GBBase's allocation. Each game boot gets a new one, so this used to leak one per game.
+	std::free(reserved_mem);
+	reserved_mem = nullptr;
+	reserved_size = 0;
+#else
 	close(fd);
 	if (reserved_mem) {
 		munmap(reserved_mem, reserved_size);
@@ -174,8 +179,14 @@ u8* MemArena::Find4GBBase() {
 		return hardcoded_ptr;
 	}
 #elif defined(NO_MMAP)
-    void* base = std::malloc(0x0A000000);
-    return static_cast<u8*>(base);
+	// Without mmap the views are plain offsets from this allocation, so it has to cover every address
+	// the 32-bit mask lets through (MEMVIEW32_MASK): 256 MB, like the reservation below. Less, and the
+	// 64 MB RAM of homebrew and PSP-2000 games runs past the end into the heap.
+	const size_t size = 0x10000000;
+	std::free(reserved_mem);
+	reserved_mem = std::malloc(size);
+	reserved_size = reserved_mem ? size : 0;
+	return static_cast<u8*>(reserved_mem);
 #else
 	// Keep the range reserved and map the views over it, so nothing else can be allocated in the gaps
 	// between them, or where a view is about to go (see MemArenaAndroid.cpp).
