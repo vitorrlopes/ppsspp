@@ -427,11 +427,13 @@ ifneq ($(platform), libnx)
 	COREFLAGS += -DWITH_UPNP -DGLEW_STATIC -DGLEW_NO_GLU -DMINIUPNP_STATICLIB
 endif
 
-# ffmpeg does not work with emscripten. On the Switch it is left out: the
-# sources in ext/ffmpeg have not been built or tested for it yet, and the
-# portlibs one is far newer than the media code here expects -
-# avcodec_find_decoder returns const AVCodec* there, for one.
-ifeq (,$(filter emscripten libnx,$(platform)))
+# On the Switch ffmpeg is left out: the sources in ext/ffmpeg have not been
+# built or tested for it yet, and the portlibs one is far newer than the media
+# code here expects - avcodec_find_decoder returns const AVCodec* there, for one.
+# Emscripten builds them as plain C (ext/ffmpeg-build/config.h has no asm). Without
+# them there's no video, and games that play one (or run the disc's mpeg.prx,
+# which decodes through our sceVideocodec) wait on it forever.
+ifeq (,$(filter libnx,$(platform)))
 	COREFLAGS += -DUSE_FFMPEG
 	BUILD_FFMPEG := 1
 endif
