@@ -23,6 +23,9 @@ const INPUT_PRESSED_SINCE = 28;
 // emulator is dead, though the last frame stays on screen as if it had only frozen.
 const CRASH_PATTERN = /Aborted\(|RuntimeError|sent an error!|Out of memory|OOM/i;
 const LOG_LINES = 200;
+// The first lines after a game starts loading say which modules it got and what was HLE'd, which
+// a flood of one repeated error later would otherwise push out of the report.
+const BOOT_LOG_LINES = 150;
 
 // Path where the core sees the OPFS root.
 export const OPFS_MOUNT = '/opfs';
@@ -35,19 +38,34 @@ export class Emulator extends EventTarget {
 		this.inputPtr = 0;
 		this.audio = null;
 		this.options = [];
-		this.log = [];  // The last LOG_LINES lines the core printed, for diagnostics.
+		this.log = [];      // The last LOG_LINES lines the core printed: { text, count } for repeats.
+		this.bootLog = [];  // The first BOOT_LOG_LINES lines since the current game started loading.
 		this.crash = null;
 	}
 
 	_logLine(text, isError) {
-		this.log.push(text);
-		if (this.log.length > LOG_LINES) {
-			this.log.shift();
+		const last = this.log[this.log.length - 1];
+		if (last && last.text === text) {
+			last.count++;
+		} else {
+			this.log.push({ text, count: 1 });
+			if (this.log.length > LOG_LINES) {
+				this.log.shift();
+			}
+			if (this.bootLog.length < BOOT_LOG_LINES) {
+				this.bootLog.push(text);
+			}
 		}
 		(isError ? console.warn : console.log)(text);
 		if (isError && !this.crash && CRASH_PATTERN.test(text)) {
 			this._crashed(text);
 		}
+	}
+
+	// The log as text: the start of the current game, then the latest lines, repeats collapsed.
+	logReport(lastLines) {
+		const recent = this.log.slice(-lastLines).map((l) => (l.count > 1 ? `${l.text}  (x${l.count})` : l.text));
+		return ['First lines of this game:', ...this.bootLog, '', 'Last log lines:', ...recent];
 	}
 
 	_crashed(reason) {
@@ -104,6 +122,7 @@ export class Emulator extends EventTarget {
 
 	// Resolves on 'loaded', rejects on 'error'.
 	loadGame(opfsPath) {
+		this.bootLog = [];
 		return this._awaitEvent('loaded', () => this._post(Command.LOAD_GAME, `${OPFS_MOUNT}/${opfsPath}`));
 	}
 

@@ -54,7 +54,8 @@ nor drifts. A hidden tab pauses the game.
 - **No JIT.** WebAssembly can't run code it generates, so the CPU runs on the IR interpreter and
   the vertex decoder JIT is off. Expect demanding 3D games to run below full speed, especially on
   phones.
-- **No FFmpeg.** The core is built without it here, so games' MPEG/PSMF videos don't play.
+- **Video decodes in software**, through the FFmpeg in `ext/ffmpeg` built as plain C (no SIMD
+  assembly), so a game's cutscenes cost more CPU than in the native apps.
 - **No ad hoc or infrastructure networking.** Browsers have no raw sockets.
 - **Storage can be evicted.** The app asks for persistent storage on the first import, but a
   browser (Safari above all) may still clear it after a long time unused.

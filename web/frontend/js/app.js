@@ -385,8 +385,7 @@ function diagnosticsReport() {
 		`In game: ${inGame}, menu open: ${menuOpen}, input on: ${input.enabled}`,
 		`Crash: ${emulator.crash ?? '-'}`,
 		'',
-		'Last log lines:',
-		...emulator.log.slice(-80),
+		...emulator.logReport(80),
 	].join('\n');
 }
 
