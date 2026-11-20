@@ -286,6 +286,15 @@ select {
 	.touch .shoulder.right { right: max(12px, env(safe-area-inset-right)); }
 }
 
+/* Clear of a host's corner badge (see app.js): about 48px tall. Smaller controls keep the
+   raised stack below the picture. */
+@media (orientation: portrait) {
+	body.has-host-badge .touch {
+		--bottom: calc(max(12px, env(safe-area-inset-bottom)) + 52px);
+		--size: min(12vw, 72px);
+	}
+}
+
 /* Dialogs */
 
 dialog {

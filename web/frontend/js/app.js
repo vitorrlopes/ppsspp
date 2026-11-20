@@ -405,6 +405,12 @@ function init() {
 		});
 	}
 
+	// Some hosts overlay a badge in the bottom-right corner (Netlify's "Powered by Netlify"). In
+	// portrait it lands on the bottom row of the touch controls, so those move up while it's there.
+	const watchHostBadge = () => document.body.classList.toggle('has-host-badge', !!document.getElementById('nl-badge-frame'));
+	new MutationObserver(watchHostBadge).observe(document.body, { childList: true });
+	watchHostBadge();
+
 	input.attachTouch(ui.touch);
 	new ResizeObserver(syncCanvasSize).observe(ui.canvas);
 	requestAnimationFrame(inputLoop);
