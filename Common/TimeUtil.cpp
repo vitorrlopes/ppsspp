@@ -13,6 +13,8 @@
 #include <switch.h>
 #endif // PPSSPP_PLATFORM(SWITCH)
 
+// emscripten_sleep() needs ASYNCIFY and throws without it. With threads, usleep() blocks the
+// calling thread properly (the sleeps below never run on the browser's main thread there).
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #endif // __EMSCRIPTEN__
@@ -300,7 +302,7 @@ void sleep_ms(int ms, const char *reason) {
 	Sleep(ms);
 #elif PPSSPP_PLATFORM(SWITCH)
 	svcSleepThread(ms * 1000000);
-#elif defined(__EMSCRIPTEN__)
+#elif defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
 	emscripten_sleep(ms);
 #else
 	usleep(ms * 1000);
@@ -320,7 +322,7 @@ void sleep_us(int us, const char *reason) {
 	Sleep(us / 1000);
 #elif defined(HAVE_LIBNX)
 	svcSleepThread(us * 1000);
-#elif defined(__EMSCRIPTEN__)
+#elif defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
 	emscripten_sleep(us / 1000);
 #else
 	usleep(us);
@@ -380,7 +382,7 @@ void sleep_precise(double seconds, const char *reason) {
 	// On other platforms, we just do a conversion with more input precision than in sleep_ms which is restricted to whole milliseconds.
 #elif defined(HAVE_LIBNX)
 	svcSleepThread((int64_t)(seconds * 1000000000.0));
-#elif defined(__EMSCRIPTEN__)
+#elif defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
 	emscripten_sleep(seconds * 1000.0);
 #else
 	usleep(seconds * 1000000.0);
@@ -409,7 +411,7 @@ void sleep_approx(double seconds, const char *reason) {
 	Sleep(std::max(1, (int)(seconds * 1000.0 + 0.5)));
 #elif defined(HAVE_LIBNX)
 	svcSleepThread((int64_t)(seconds * 1000000000.0));
-#elif defined(__EMSCRIPTEN__)
+#elif defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
 	emscripten_sleep(seconds * 1000.0);
 #else
 	usleep(seconds * 1000000.0);
