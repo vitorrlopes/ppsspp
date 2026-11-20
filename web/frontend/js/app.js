@@ -7,6 +7,10 @@ import {
 
 // Where the source of this build is published (the GPL requires offering it).
 const SOURCE_URL = 'https://github.com/vitorrlopes/ppsspp';
+// Stamped by build.sh, for diagnostics.
+const BUILD_VERSION = '__BUILD_VERSION__';
+// No emulated frame for this long, in a game that isn't paused, counts as stuck.
+const STALL_SECONDS = 8;
 const OPTIONS_KEY = 'ppsspp.options';
 const TOUCH_KEY = 'ppsspp.touch';
 const HUD_KEY = 'ppsspp.hud';
@@ -32,6 +36,7 @@ const ui = {
 	aboutDialog: $('#about-dialog'),
 	updateBanner: $('#update-banner'),
 	hud: $('#hud'),
+	problemDialog: $('#problem-dialog'),
 };
 
 const emulator = new Emulator(ui.canvas);
@@ -42,6 +47,8 @@ if (new URLSearchParams(location.search).has('debug')) {
 const input = new InputManager();
 let emulatorReady = null;   // Promise, set once boot starts.
 let inGame = false;
+let currentGame = null;
+let lastFps = 0;
 let menuOpen = false;
 
 // Small helpers
@@ -170,6 +177,7 @@ async function startGame(game) {
 	// Audio has to start inside the click that started the game.
 	const audioReady = emulatorReady.then(() => emulator.startAudio()).catch(() => {});
 	await emulatorReady;
+	currentGame = game;
 	showPlayer(true);
 	toast(t('loadingGame'));
 	try {
@@ -320,17 +328,72 @@ function inputLoop() {
 	requestAnimationFrame(inputLoop);
 }
 
-// Emulated frames per second, and the speed against a real PSP (59.94 fps).
-function startHud() {
+function formatMB(bytes) {
+	return `${(bytes / 1048576).toFixed(0)} MB`;
+}
+
+// Once a second: the FPS display (with the speed against a real PSP's 59.94 fps, and memory),
+// and the stall watchdog.
+function startMonitor() {
 	let last = { time: performance.now(), frames: emulator.framesRun() };
+	let stalled = 0;
 	setInterval(() => {
-		const now = { time: performance.now(), frames: emulator.framesRun() };
-		const fps = (now.frames - last.frames) * 1000 / (now.time - last.time);
+		const stats = emulator.stats();
+		const now = { time: performance.now(), frames: stats.frames };
+		lastFps = (now.frames - last.frames) * 1000 / (now.time - last.time);
+		const moved = now.frames !== last.frames;
 		last = now;
 		if (!ui.hud.hidden) {
-			ui.hud.textContent = `${fps.toFixed(0)} FPS · ${(fps / 59.94 * 100).toFixed(0)}%`;
+			ui.hud.textContent = `${lastFps.toFixed(0)} FPS · ${(lastFps / 59.94 * 100).toFixed(0)}% · ${formatMB(stats.heapUsed)}/${formatMB(stats.heapSize)}`;
+		}
+		const watching = inGame && !menuOpen && !document.hidden && !emulator.crash;
+		stalled = watching && !moved ? stalled + 1 : 0;
+		if (stalled === STALL_SECONDS) {
+			showProblem('stalled');
 		}
 	}, 1000);
+}
+
+function diagnosticsReport() {
+	const stats = emulator.stats();
+	return [
+		`PPSSPP Web ${BUILD_VERSION}`,
+		`Browser: ${navigator.userAgent}`,
+		`Cores: ${navigator.hardwareConcurrency ?? '?'}, device memory: ${navigator.deviceMemory ?? '?'} GB, isolated: ${crossOriginIsolated}`,
+		`Game: ${currentGame?.name ?? '-'}`,
+		`FPS: ${lastFps.toFixed(1)}, frames: ${stats.frames}, heap: ${formatMB(stats.heapUsed)} of ${formatMB(stats.heapSize)}`,
+		`Crash: ${emulator.crash ?? '-'}`,
+		'',
+		'Last log lines:',
+		...emulator.log.slice(-80),
+	].join('\n');
+}
+
+// kind: 'crashed' (the emulator is dead, only a reload helps) or 'stalled' (it may recover).
+function showProblem(kind) {
+	if (ui.problemDialog.open) {
+		return;
+	}
+	$('#problem-title').textContent = t(`${kind}Title`);
+	$('#problem-text').textContent = t(`${kind}Text`);
+	$('#problem-report').value = diagnosticsReport();
+	$('#btn-keep-waiting').hidden = kind !== 'stalled';
+	ui.problemDialog.showModal();
+}
+
+async function copyReport() {
+	const text = diagnosticsReport();
+	$('#problem-report').value = text;
+	try {
+		await navigator.clipboard.writeText(text);
+	} catch {
+		// No clipboard permission: select it, so a long press can copy it.
+		const area = $('#problem-report');
+		area.closest('details').open = true;
+		area.select();
+		return;
+	}
+	toast(t('reportCopied'));
 }
 
 // Service worker and updates.
@@ -435,7 +498,13 @@ function init() {
 	input.attachTouch(ui.touch);
 	new ResizeObserver(syncCanvasSize).observe(ui.canvas);
 	requestAnimationFrame(inputLoop);
-	startHud();
+	startMonitor();
+	emulator.addEventListener('crashed', () => {
+		input.enabled = false;
+		showProblem('crashed');
+	});
+	$('#btn-copy-report').addEventListener('click', copyReport);
+	$('#btn-reload').addEventListener('click', () => location.reload());
 
 	boot();
 	refreshLibrary();

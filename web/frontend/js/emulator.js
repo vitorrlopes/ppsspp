@@ -19,6 +19,11 @@ const INPUT_CANVAS_W = 20;
 const INPUT_CANVAS_H = 24;
 const INPUT_PRESSED_SINCE = 28;
 
+// The runtime reports a crash in any of its threads through printErr like this. After that the
+// emulator is dead, though the last frame stays on screen as if it had only frozen.
+const CRASH_PATTERN = /Aborted\(|RuntimeError|sent an error!|Out of memory|OOM/i;
+const LOG_LINES = 200;
+
 // Path where the core sees the OPFS root.
 export const OPFS_MOUNT = '/opfs';
 
@@ -30,6 +35,27 @@ export class Emulator extends EventTarget {
 		this.inputPtr = 0;
 		this.audio = null;
 		this.options = [];
+		this.log = [];  // The last LOG_LINES lines the core printed, for diagnostics.
+		this.crash = null;
+	}
+
+	_logLine(text, isError) {
+		this.log.push(text);
+		if (this.log.length > LOG_LINES) {
+			this.log.shift();
+		}
+		(isError ? console.warn : console.log)(text);
+		if (isError && !this.crash && CRASH_PATTERN.test(text)) {
+			this._crashed(text);
+		}
+	}
+
+	_crashed(reason) {
+		if (this.crash) {
+			return;
+		}
+		this.crash = String(reason);
+		this.dispatchEvent(new CustomEvent('crashed', { detail: this.crash }));
 	}
 
 	async start() {
@@ -44,8 +70,9 @@ export class Emulator extends EventTarget {
 		this.module = await createPPSSPP({
 			canvas: this.canvas,
 			onHostEvent: (type, detail) => this._onHostEvent(type, detail),
-			print: (text) => console.log(text),
-			printErr: (text) => console.warn(text),
+			print: (text) => this._logLine(text, false),
+			printErr: (text) => this._logLine(text, true),
+			onAbort: (what) => this._crashed(`Aborted: ${what}`),
 		});
 		this.inputPtr = this.module._web_input();
 		await ready;
@@ -130,11 +157,16 @@ export class Emulator extends EventTarget {
 	// Counters from struct WebStats: frames run so far, and microseconds spent running them (wraps).
 	stats() {
 		if (!this.module) {
-			return { frames: 0, micros: 0 };
+			return { frames: 0, micros: 0, heapUsed: 0, heapSize: 0 };
 		}
 		const base = this.module._web_stats() >> 2;
 		const heap = this.module.HEAPU32;
-		return { frames: Atomics.load(heap, base), micros: Atomics.load(heap, base + 1) };
+		return {
+			frames: Atomics.load(heap, base),
+			micros: Atomics.load(heap, base + 1),
+			heapUsed: Atomics.load(heap, base + 2),
+			heapSize: heap.byteLength,
+		};
 	}
 
 	framesRun() {

@@ -327,6 +327,8 @@ dialog {
 }
 dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
 dialog h2 { margin-top: 0; }
+#problem-report { width: 100%; margin-top: 8px; background: var(--bg); color: var(--muted); border: 1px solid #39424f; border-radius: 8px; font: 11px/1.4 ui-monospace, monospace; }
+#problem-dialog .dialog-actions { flex-wrap: wrap; gap: 8px; }
 .settings-list { display: grid; gap: 10px; margin: 12px 0; }
 .setting { display: grid; grid-template-columns: 1fr minmax(0, 45%); gap: 12px; align-items: center; }
 .dialog-actions { display: flex; justify-content: flex-end; margin-top: 16px; }

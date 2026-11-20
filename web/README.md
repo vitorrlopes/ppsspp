@@ -58,8 +58,9 @@ nor drifts. A hidden tab pauses the game.
 - **No ad hoc or infrastructure networking.** Browsers have no raw sockets.
 - **Storage can be evicted.** The app asks for persistent storage on the first import, but a
   browser (Safari above all) may still clear it after a long time unused.
-- **Memory.** The build reserves 768 MB up front (see `build.sh`). That's fine on desktop and
-  recent phones; older phones may refuse to start it.
+- **Memory.** The heap starts at 512 MB and grows up to 2 GB as a game needs it (see
+  `build.sh`). A phone that can't give a tab that much stops the game with an error, which the
+  app reports with a diagnostics report to copy.
 
 ## Licensing
 

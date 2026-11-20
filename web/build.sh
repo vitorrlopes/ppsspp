@@ -65,8 +65,9 @@ mkdir -p "$DIST"
 #   on demand instead, which is safe since no C code runs on the page's main thread.
 # - WasmFS gives the OPFS backend, which holds the games and saves without loading them into memory.
 # - FULL_ES3 emulates the bits of GLES3 that WebGL 2 lacks, like client-side vertex arrays.
-# - Fixed memory: growing shared memory slows down every access to it from JS, WebGL calls
-#   included. 768 MB holds the 256 MB PSP address space plus the caches.
+# - Growable memory: a demo already takes 576 MB (256 MB of it the PSP address space), and with
+#   a fixed 768 MB a big 3D game ran out and the runtime aborted, which looks like a frozen
+#   game. Growth costs JS a check on each access to the heap, WebGL calls included.
 emcc $OPT $LINK_DEBUG -std=c++17 -pthread -msimd128 \
 	-I"$ROOT/libretro/libretro-common/include" \
 	"$WEB_DIR/host/web_host.cpp" "$CORE_LIB" "$ZLIB_OBJ"/*.o \
@@ -74,7 +75,7 @@ emcc $OPT $LINK_DEBUG -std=c++17 -pthread -msimd128 \
 	-sPROXY_TO_PTHREAD=1 -sOFFSCREENCANVAS_SUPPORT=1 -sPTHREAD_POOL_SIZE=0 \
 	-sWASMFS=1 \
 	-sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1 -sGL_ENABLE_GET_PROC_ADDRESS=1 \
-	-sALLOW_MEMORY_GROWTH=0 -sINITIAL_MEMORY=768MB \
+	-sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=512MB -sMAXIMUM_MEMORY=2GB \
 	-sSTACK_SIZE=1MB -sDEFAULT_PTHREAD_STACK_SIZE=1MB \
 	-sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createPPSSPP -sENVIRONMENT=web,worker \
 	-sEXPORTED_FUNCTIONS=_main,_web_input,_web_stats,_web_audio_ring,_web_post_command,_malloc,_free \
@@ -89,6 +90,6 @@ cp "$ROOT/LICENSE.TXT" "$DIST/licenses/PPSSPP-LICENSE.txt"
 cp "$ROOT/ext/aemu_postoffice/gpl-3.0.txt" "$DIST/licenses/GPL-3.0.txt"
 # The service worker caches by version, so a new build replaces the old files everywhere.
 VERSION="$(git -C "$ROOT" describe --always --dirty 2>/dev/null || date +%s)-$(date +%s)"
-sed -i "s/__BUILD_VERSION__/$VERSION/" "$DIST/sw.js"
+sed -i "s/__BUILD_VERSION__/$VERSION/" "$DIST/sw.js" "$DIST/js/app.js"
 
 echo "Done: $DIST"

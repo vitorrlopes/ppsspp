@@ -111,6 +111,23 @@
 		</form>
 	</dialog>
 
+	<!-- Crash or stall -->
+	<dialog id="problem-dialog">
+		<form method="dialog">
+			<h2 id="problem-title"></h2>
+			<p id="problem-text"></p>
+			<details>
+				<summary data-i18n="diagnostics"></summary>
+				<textarea id="problem-report" readonly rows="8"></textarea>
+			</details>
+			<div class="dialog-actions">
+				<button class="btn" type="button" id="btn-copy-report" data-i18n="copyReport"></button>
+				<button class="btn" value="wait" id="btn-keep-waiting" data-i18n="keepWaiting"></button>
+				<button class="btn primary" type="button" id="btn-reload" data-i18n="reload"></button>
+			</div>
+		</form>
+	</dialog>
+
 	<!-- About / licences -->
 	<dialog id="about-dialog">
 		<form method="dialog">

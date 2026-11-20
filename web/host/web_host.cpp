@@ -40,6 +40,7 @@
 #include <pthread.h>
 #include <string>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 #include "libretro.h"
@@ -71,6 +72,7 @@ constexpr int MIN_PRESS_FRAMES = 4;
 struct WebStats {
 	std::atomic<uint32_t> framesRun;
 	std::atomic<uint32_t> runMicros;  // Time spent in retro_run(), wrapping. For the CPU cost per frame.
+	std::atomic<uint32_t> heapTop;    // How far the heap has grown (sbrk), against the fixed memory size.
 };
 
 // Single producer (this thread), single consumer (the AudioWorklet), interleaved stereo frames.
@@ -622,6 +624,7 @@ void LatchPresses() {
 }
 
 void Tick() {
+	g_stats.heapTop.store((uint32_t)(uintptr_t)sbrk(0), std::memory_order_relaxed);
 	DrainCommands();
 	UpdateCanvasSize();
 	if (!g_gameLoaded || g_paused) {
