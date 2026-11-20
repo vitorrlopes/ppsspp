@@ -28,6 +28,7 @@
 #include <emscripten/wasmfs.h>
 #include <GLES3/gl3.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdarg>
 #include <cstdint>
@@ -72,7 +73,9 @@ constexpr int MIN_PRESS_FRAMES = 4;
 struct WebStats {
 	std::atomic<uint32_t> framesRun;
 	std::atomic<uint32_t> runMicros;  // Time spent in retro_run(), wrapping. For the CPU cost per frame.
-	std::atomic<uint32_t> heapTop;    // How far the heap has grown (sbrk), against the fixed memory size.
+	std::atomic<uint32_t> heapTop;    // How far the heap has grown (sbrk).
+	std::atomic<uint32_t> ticks;      // Main loop iterations: stops only if this thread is stuck.
+	std::atomic<uint32_t> runEntered; // emscripten_get_now() in ms when retro_run() was entered, 0 outside it.
 };
 
 // Single producer (this thread), single consumer (the AudioWorklet), interleaved stereo frames.
@@ -624,6 +627,7 @@ void LatchPresses() {
 }
 
 void Tick() {
+	g_stats.ticks.fetch_add(1, std::memory_order_relaxed);
 	g_stats.heapTop.store((uint32_t)(uintptr_t)sbrk(0), std::memory_order_relaxed);
 	DrainCommands();
 	UpdateCanvasSize();
@@ -636,7 +640,10 @@ void Tick() {
 	double start = emscripten_get_now();
 	while (ran < frames && !g_shutdownRequested) {
 		LatchPresses();
+		// Nonzero only while inside, so a report can tell a core stuck in a frame from one not running.
+		g_stats.runEntered.store(std::max<uint32_t>(1, (uint32_t)emscripten_get_now()), std::memory_order_relaxed);
 		retro_run();
+		g_stats.runEntered.store(0, std::memory_order_relaxed);
 		ran++;
 	}
 	g_stats.runMicros.fetch_add((uint32_t)((emscripten_get_now() - start) * 1000.0), std::memory_order_relaxed);

@@ -157,7 +157,7 @@ export class Emulator extends EventTarget {
 	// Counters from struct WebStats: frames run so far, and microseconds spent running them (wraps).
 	stats() {
 		if (!this.module) {
-			return { frames: 0, micros: 0, heapUsed: 0, heapSize: 0 };
+			return { frames: 0, micros: 0, heapUsed: 0, heapSize: 0, ticks: 0, runEntered: 0 };
 		}
 		const base = this.module._web_stats() >> 2;
 		const heap = this.module.HEAPU32;
@@ -165,7 +165,9 @@ export class Emulator extends EventTarget {
 			frames: Atomics.load(heap, base),
 			micros: Atomics.load(heap, base + 1),
 			heapUsed: Atomics.load(heap, base + 2),
-			heapSize: heap.byteLength,
+			heapSize: this.module.wasmMemory.buffer.byteLength,
+			ticks: Atomics.load(heap, base + 3),
+			runEntered: Atomics.load(heap, base + 4),
 		};
 	}
 

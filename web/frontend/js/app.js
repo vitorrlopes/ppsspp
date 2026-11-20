@@ -9,7 +9,9 @@ import {
 const SOURCE_URL = 'https://github.com/vitorrlopes/ppsspp';
 // Stamped by build.sh, for diagnostics.
 const BUILD_VERSION = '__BUILD_VERSION__';
-// No emulated frame for this long, in a game that isn't paused, counts as stuck.
+// Fewer emulated frames than this many seconds' worth of 1 fps, over that long, in a game that
+// isn't paused, counts as stuck. (Not "no frames at all": a game crawling at a frame every few
+// seconds looked frozen and showed 0 FPS, but never tripped that.)
 const STALL_SECONDS = 8;
 const OPTIONS_KEY = 'ppsspp.options';
 const TOUCH_KEY = 'ppsspp.touch';
@@ -49,6 +51,9 @@ let emulatorReady = null;   // Promise, set once boot starts.
 let inGame = false;
 let currentGame = null;
 let lastFps = 0;
+let lastStats = null;
+let stuckInRunSeconds = 0;  // How long the core has been inside the same retro_run().
+let ticksPerSecond = 0;
 let menuOpen = false;
 
 // Small helpers
@@ -271,6 +276,7 @@ async function runMenuAction(action) {
 			break;
 		}
 		case 'settings': openSettings(); break;
+		case 'copy-report': await copyReport(); break;
 		case 'reset':
 			emulator.reset();
 			closeMenu();
@@ -335,20 +341,33 @@ function formatMB(bytes) {
 // Once a second: the FPS display (with the speed against a real PSP's 59.94 fps, and memory),
 // and the stall watchdog.
 function startMonitor() {
-	let last = { time: performance.now(), frames: emulator.framesRun() };
-	let stalled = 0;
+	let last = { time: performance.now(), ...emulator.stats() };
+	const recentFrames = [];  // Frames run in each of the last STALL_SECONDS seconds, while watched.
 	setInterval(() => {
 		const stats = emulator.stats();
-		const now = { time: performance.now(), frames: stats.frames };
-		lastFps = (now.frames - last.frames) * 1000 / (now.time - last.time);
-		const moved = now.frames !== last.frames;
-		last = now;
+		const seconds = (performance.now() - last.time) / 1000;
+		lastFps = (stats.frames - last.frames) / seconds;
+		ticksPerSecond = (stats.ticks - last.ticks) / seconds;
+		stuckInRunSeconds = stats.runEntered && stats.runEntered === last.runEntered ? stuckInRunSeconds + seconds : 0;
+		const framesNow = stats.frames - last.frames;
+		last = { time: performance.now(), ...stats };
+		lastStats = stats;
 		if (!ui.hud.hidden) {
-			ui.hud.textContent = `${lastFps.toFixed(0)} FPS · ${(lastFps / 59.94 * 100).toFixed(0)}% · ${formatMB(stats.heapUsed)}/${formatMB(stats.heapSize)}`;
+			const fps = lastFps < 10 ? lastFps.toFixed(1) : lastFps.toFixed(0);
+			ui.hud.textContent = `${fps} FPS · ${(lastFps / 59.94 * 100).toFixed(0)}% · ${formatMB(stats.heapUsed)}/${formatMB(stats.heapSize)}`;
 		}
 		const watching = inGame && !menuOpen && !document.hidden && !emulator.crash;
-		stalled = watching && !moved ? stalled + 1 : 0;
-		if (stalled === STALL_SECONDS) {
+		if (!watching) {
+			recentFrames.length = 0;
+			return;
+		}
+		recentFrames.push(framesNow);
+		if (recentFrames.length > STALL_SECONDS) {
+			recentFrames.shift();
+		}
+		const total = recentFrames.reduce((a, b) => a + b, 0);
+		if (recentFrames.length === STALL_SECONDS && total < STALL_SECONDS) {
+			recentFrames.length = 0;
 			showProblem('stalled');
 		}
 	}, 1000);
@@ -362,6 +381,8 @@ function diagnosticsReport() {
 		`Cores: ${navigator.hardwareConcurrency ?? '?'}, device memory: ${navigator.deviceMemory ?? '?'} GB, isolated: ${crossOriginIsolated}`,
 		`Game: ${currentGame?.name ?? '-'}`,
 		`FPS: ${lastFps.toFixed(1)}, frames: ${stats.frames}, heap: ${formatMB(stats.heapUsed)} of ${formatMB(stats.heapSize)}`,
+		`Host loop: ${ticksPerSecond.toFixed(1)} ticks/s, inside one retro_run for ${stuckInRunSeconds.toFixed(0)} s`,
+		`In game: ${inGame}, menu open: ${menuOpen}, input on: ${input.enabled}`,
 		`Crash: ${emulator.crash ?? '-'}`,
 		'',
 		'Last log lines:',
