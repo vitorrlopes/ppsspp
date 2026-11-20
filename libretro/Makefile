@@ -301,6 +301,9 @@ else ifeq ($(platform), emscripten)
 	GLES = 1
 	TARGET := $(TARGET_NAME)_libretro_emscripten.bc
 	PLATCFLAGS += -msimd128 -msse3 -mssse3 -msse4.1 -pthread -D__EMSCRIPTEN__ -DNO_MMAP
+	# There's no SIGPIPE in a browser, and the ad hoc server in ext/aemu_postoffice can't listen
+	# there anyway. Its setsockopt() just fails.
+	PLATCFLAGS += -DSO_NOSIGPIPE=0
 	PLATFORM_EXT = emscripten
 	STATIC_LINKING = 1
 

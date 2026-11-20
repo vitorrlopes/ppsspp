@@ -92,11 +92,19 @@ static inline void ARM32WriteFPSCR(u32 fpscr) {
 
 #endif
 
+// WebAssembly has no floating point control register: it always rounds to nearest and keeps
+// denormals, so it takes the fesetround() path even though the SSE intrinsics are there.
+#if PPSSPP_ARCH(SSE2) && !defined(__EMSCRIPTEN__)
+#define HOST_FP_CONTROL_SSE 1
+#else
+#define HOST_FP_CONTROL_SSE 0
+#endif
+
 // The host's own mode, saved by the first apply and written back by restore, so restore doesn't have
 // to read the register. Our bits are cleared in it, in case a JIT's asm stub had already set them.
 // Only the CPU thread calls these.
 static bool g_hostModeSaved = false;
-#if PPSSPP_ARCH(SSE2)
+#if HOST_FP_CONTROL_SSE
 static u32 g_savedHostMode;
 #elif PPSSPP_ARCH(ARM64)
 static u64 g_savedHostMode;
@@ -113,7 +121,7 @@ void ApplyHostRoundingMode(const MIPSState *mips) {
 	}
 	int rmode = fcr1Bits & 3;
 	bool ftz = (fcr1Bits & 0x01000000) != 0;
-#if PPSSPP_ARCH(SSE2)
+#if HOST_FP_CONTROL_SSE
 	if (!g_hostModeSaved) {
 		g_savedHostMode = _mm_getcsr() & ~0xE040;
 		g_hostModeSaved = true;
@@ -163,7 +171,7 @@ void ApplyHostRoundingMode(const MIPSState *mips) {
 void RestoreHostRoundingMode(bool force) {
 	if (!g_hostModeSaved) {
 		if (force) {
-#if PPSSPP_ARCH(SSE2)
+#if HOST_FP_CONTROL_SSE
 			_mm_setcsr(_mm_getcsr() & ~0xE040);
 #elif PPSSPP_ARCH(ARM64)
 			ARM64WriteFPCR(ARM64ReadFPCR() & ~(7 << 22));
@@ -176,7 +184,7 @@ void RestoreHostRoundingMode(bool force) {
 		return;
 	}
 	g_hostModeSaved = false;
-#if PPSSPP_ARCH(SSE2)
+#if HOST_FP_CONTROL_SSE
 	_mm_setcsr(g_savedHostMode);
 #elif PPSSPP_ARCH(ARM64)
 	ARM64WriteFPCR(g_savedHostMode);

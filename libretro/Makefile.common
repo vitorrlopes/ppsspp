@@ -386,6 +386,10 @@ ifeq ($(PLATFORM_EXT), android)
 COREFLAGS += -DHAVE_DLFCN_H
 # newlib has no <sys/auxv.h>, so cpu_features must not go looking for getauxval.
 else ifeq ($(platform), libnx)
+# Neither has Emscripten. Its <arm_neon.h> (SIMDe, which xxhash picks up for wasm SIMD) would use
+# the x86 headers once -msse is on, and there is no MMX there; SIMDE_NO_NATIVE keeps it portable.
+else ifeq ($(platform), emscripten)
+COREFLAGS += -DSIMDE_NO_NATIVE
 else ifneq ($(PLATFORM_EXT), win32)
 COREFLAGS += -DHAVE_STRONG_GETAUXVAL
 endif
@@ -411,10 +415,10 @@ SOURCES_C += \
 	$(EXTDIR)/cpu_features/src/string_view.c
 
 # hwcaps.c wants getauxval, through <sys/auxv.h> or dlopen, and errors out when
-# it has neither - which is the Switch. cpu_features' own CMakeLists only builds
+# it has neither - which is the Switch and Emscripten. cpu_features' own CMakeLists only builds
 # it `if(UNIX)` for the same reason, and nothing references it there: the aarch64
 # implementation that calls into it compiles away without CPU_FEATURES_OS_LINUX.
-ifeq (,$(filter libnx,$(platform))$(filter win32,$(PLATFORM_EXT)))
+ifeq (,$(filter libnx emscripten,$(platform))$(filter win32,$(PLATFORM_EXT)))
 SOURCES_C += \
 	$(EXTDIR)/cpu_features/src/hwcaps.c
 endif
@@ -1040,6 +1044,10 @@ ifeq ($(WITH_DYNAREC),1)
 	endif
       ifeq ($(TARGET_ARCH),x86_64)
          CPUFLAGS += -D_M_X64 -D_ARCH_64
+      else ifeq ($(platform), emscripten)
+         # ppsspp_config.h treats wasm32 as 32-bit x86 for our own code. Defining _M_IX86 for
+         # everything would make libraries in ext/ (dr_flac, SIMDe) reach for x86 asm and headers.
+         CPUFLAGS += -D_ARCH_32
       else
          CPUFLAGS += -D_M_IX86 -D_ARCH_32
          ifeq (,$(findstring msvc,$(platform)))
