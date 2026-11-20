@@ -1,0 +1,4 @@
+# web/dist is built by web/build.sh (Emscripten, not available on Netlify): publish it as it is.
+[build]
+  publish = "."
+  command = ""

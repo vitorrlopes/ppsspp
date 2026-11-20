@@ -318,10 +318,19 @@ async function registerServiceWorker() {
 	if (!('serviceWorker' in navigator)) {
 		return;
 	}
-	const reg = await navigator.serviceWorker.register('sw.js');
+	const reg = await navigator.serviceWorker?.register('sw.js');
+	if (!reg) {
+		return;
+	}
+	// Reload only for an update the user asked for. On a first visit the new worker also takes
+	// control (clients.claim), and reloading then would cut off an import in progress.
+	let updateRequested = false;
 	const offer = (worker) => {
 		ui.updateBanner.hidden = false;
-		$('#btn-update').onclick = () => worker.postMessage('skipWaiting');
+		$('#btn-update').onclick = () => {
+			updateRequested = true;
+			worker.postMessage('skipWaiting');
+		};
 	};
 	if (reg.waiting && navigator.serviceWorker.controller) {
 		offer(reg.waiting);
@@ -334,11 +343,9 @@ async function registerServiceWorker() {
 			}
 		});
 	});
-	let reloading = false;
 	navigator.serviceWorker.addEventListener('controllerchange', () => {
-		// Don't yank a running game away; the new version loads next time.
-		if (!reloading && !inGame) {
-			reloading = true;
+		if (updateRequested) {
+			updateRequested = false;
 			location.reload();
 		}
 	});
