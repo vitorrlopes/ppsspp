@@ -62,6 +62,7 @@ struct WebInput {
 // Counters for the page (FPS display, tests). Written here, read by JS.
 struct WebStats {
 	std::atomic<uint32_t> framesRun;
+	std::atomic<uint32_t> runMicros;  // Time spent in retro_run(), wrapping. For the CPU cost per frame.
 };
 
 // Single producer (this thread), single consumer (the AudioWorklet), interleaved stereo frames.
@@ -603,10 +604,12 @@ void Tick() {
 	}
 	int frames = FramesDue();
 	int ran = 0;
+	double start = emscripten_get_now();
 	while (ran < frames && !g_shutdownRequested) {
 		retro_run();
 		ran++;
 	}
+	g_stats.runMicros.fetch_add((uint32_t)((emscripten_get_now() - start) * 1000.0), std::memory_order_relaxed);
 	g_stats.framesRun.fetch_add(ran, std::memory_order_relaxed);
 	if (g_shutdownRequested) {
 		g_shutdownRequested = false;

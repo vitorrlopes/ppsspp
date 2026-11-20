@@ -60,6 +60,9 @@ mkdir -p "$DIST"
 # Linker settings, grouped by what they're for:
 # - Threads: the core runs the emulated CPU on a thread of its own; PROXY_TO_PTHREAD moves main()
 #   (and with it every libretro call) off the page's main thread, and the canvas goes with it.
+#   No prestarted pool: with one, about one boot in five hung on the first OPFS access, its
+#   helper thread never answering (Emscripten 4.0.10, reproduced without PPSSPP). Workers start
+#   on demand instead, which is safe since no C code runs on the page's main thread.
 # - WasmFS gives the OPFS backend, which holds the games and saves without loading them into memory.
 # - FULL_ES3 emulates the bits of GLES3 that WebGL 2 lacks, like client-side vertex arrays.
 # - Fixed memory: growing shared memory slows down every access to it from JS, WebGL calls
@@ -68,7 +71,7 @@ emcc $OPT $LINK_DEBUG -std=c++17 -pthread -msimd128 \
 	-I"$ROOT/libretro/libretro-common/include" \
 	"$WEB_DIR/host/web_host.cpp" "$CORE_LIB" "$ZLIB_OBJ"/*.o \
 	-o "$DIST/ppsspp.mjs" \
-	-sPROXY_TO_PTHREAD=1 -sOFFSCREENCANVAS_SUPPORT=1 -sPTHREAD_POOL_SIZE=8 \
+	-sPROXY_TO_PTHREAD=1 -sOFFSCREENCANVAS_SUPPORT=1 -sPTHREAD_POOL_SIZE=0 \
 	-sWASMFS=1 \
 	-sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1 -sGL_ENABLE_GET_PROC_ADDRESS=1 \
 	-sALLOW_MEMORY_GROWTH=0 -sINITIAL_MEMORY=768MB \

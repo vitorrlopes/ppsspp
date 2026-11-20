@@ -126,12 +126,18 @@ export class Emulator extends EventTarget {
 		Atomics.store(this.module.HEAP32, (this.inputPtr + offset) >> 2, value | 0);
 	}
 
-	// Emulated frames run so far (struct WebStats).
-	framesRun() {
+	// Counters from struct WebStats: frames run so far, and microseconds spent running them (wraps).
+	stats() {
 		if (!this.module) {
-			return 0;
+			return { frames: 0, micros: 0 };
 		}
-		return Atomics.load(this.module.HEAPU32, this.module._web_stats() >> 2);
+		const base = this.module._web_stats() >> 2;
+		const heap = this.module.HEAPU32;
+		return { frames: Atomics.load(heap, base), micros: Atomics.load(heap, base + 1) };
+	}
+
+	framesRun() {
+		return this.stats().frames;
 	}
 
 	setButtons(mask) {
