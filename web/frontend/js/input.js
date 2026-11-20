@@ -36,6 +36,11 @@ const PADMAP = {
 
 const DEADZONE = 0.15;
 
+// The "standard" layout's centre button (Xbox, PS, Home). Android may keep it for itself, so
+// SELECT + START together does the same.
+const PAD_HOME = 16;
+const MENU_COMBO = (1 << Button.SELECT) | (1 << Button.START);
+
 function applyDeadzone(v) {
 	return Math.abs(v) < DEADZONE ? 0 : v;
 }
@@ -80,6 +85,8 @@ export class InputManager {
 		// Buttons that went down since the last poll, however briefly (see WebInput.pressedSince).
 		this.pressedSince = 0;
 		this._padMask = 0;
+		this._menuHeld = false;
+		this._ignored = 0;  // Gamepad buttons held through a menu, ignored until released.
 		this._keys = new Set();
 		window.addEventListener('keydown', (e) => this._onKey(e, true));
 		window.addEventListener('keyup', (e) => this._onKey(e, false));
@@ -128,8 +135,13 @@ export class InputManager {
 
 	// Called once per animation frame. Returns { mask, pressed, stick: [x, y] }, where pressed has
 	// the buttons that went down since the last call, even if they're already up again.
+	//
+	// Also returns, whether or not input is enabled (the pause menu needs them):
+	// - padPressed: gamepad buttons that went down since the last call.
+	// - menu: the gamepad asked for the pause menu (its centre button, or SELECT + START).
 	poll() {
 		let padMask = 0;
+		let home = false;
 		let x = this.keyStick[0] + this.touchStick[0];
 		let y = this.keyStick[1] + this.touchStick[1];
 		for (const pad of navigator.getGamepads?.() ?? []) {
@@ -141,20 +153,34 @@ export class InputManager {
 					padMask |= 1 << PADMAP[i];
 				}
 			});
+			home = home || !!pad.buttons[PAD_HOME]?.pressed;
 			x += applyDeadzone(pad.axes[0] ?? 0);
 			y += applyDeadzone(pad.axes[1] ?? 0);
 		}
-		const pressed = this.pressedSince | (padMask & ~this._padMask);
+		this._ignored &= padMask;
+		padMask &= ~this._ignored;
+		const menuNow = home || (padMask & MENU_COMBO) === MENU_COMBO;
+		const menu = menuNow && !this._menuHeld;
+		this._menuHeld = menuNow;
+		if (menuNow) {
+			// The combo is for us: the game shouldn't see a START press from it.
+			padMask &= ~MENU_COMBO;
+		}
+		const padPressed = padMask & ~this._padMask;
+		const pressed = this.pressedSince | padPressed;
 		this.pressedSince = 0;
 		this._padMask = padMask;
 		if (!this.enabled) {
-			return { mask: 0, pressed: 0, stick: [0, 0] };
+			return { mask: 0, pressed: 0, padPressed, menu, stick: [0, 0] };
 		}
 		const mask = this.keyMask | this.touchMask | padMask;
-		return { mask, pressed, stick: [Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))] };
+		return { mask, pressed, padPressed, menu, stick: [Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))] };
 	}
 
-	// Wires up the on-screen controls: elements with data-button="CROSS" etc., and one data-stick.
+	ignoreHeldPadButtons() {
+		this._ignored = this._padMask;
+	}
+
 	// Wires up the on-screen controls: the .dpad and .face clusters, the other data-button
 	// elements, and one data-stick. Each finger belongs to the control it first touched until it
 	// lifts, and drifting off a button's edge doesn't release it: thumbs holding accelerate and

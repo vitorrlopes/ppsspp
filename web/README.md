@@ -49,6 +49,18 @@ shared `WebInput` block, and queues commands (load, pause, save state...) with
 Frame pacing follows the clock, nudged by how full the audio ring is, so audio neither underruns
 nor drifts. A hidden tab pauses the game.
 
+## Controls
+
+- **Gamepad**: any controller the browser reports with the standard layout (Xbox, PlayStation,
+  8BitDo and most others, over Bluetooth or USB). Press a button once after connecting it: browsers
+  only expose a gamepad after that. Cross/circle/square/triangle are the bottom/right/left/top face
+  buttons, L1/L2 are L and R1/R2 are R, and the left stick is the PSP's analog stick. The centre
+  button, or SELECT + START together, opens the pause menu, which the d-pad and cross/circle drive.
+  The on-screen controls hide while a gamepad is connected, and losing it pauses the game.
+- **Keyboard**: arrows, X (cross), Z (circle), A (square), S (triangle), Q/W (L/R), Space or Enter
+  (start), V (select), IJKL (analog stick), Esc (menu).
+- **Touch**: on-screen controls, shown on touch screens.
+
 ## Limitations
 
 - **No JIT.** WebAssembly can't run code it generates, so the CPU runs on the IR interpreter and

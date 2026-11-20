@@ -40,6 +40,8 @@ a { color: var(--accent); }
 	min-height: 44px;
 }
 .btn:hover { filter: brightness(1.15); }
+/* Where gamepad navigation is (see navigateWithPad in app.js). */
+.pad-focus { outline: 3px solid var(--accent); outline-offset: 2px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
 .btn.small { min-height: 32px; padding: 4px 12px; }

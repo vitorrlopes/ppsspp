@@ -1,5 +1,5 @@
 import { Emulator } from './emulator.js';
-import { InputManager } from './input.js';
+import { Button, InputManager } from './input.js';
 import { applyTranslations, formatBytes, t } from './i18n.js';
 import {
 	deleteGame, importGame, isGameFile, listGames, requestPersistence, storageEstimate,
@@ -213,7 +213,7 @@ async function quitGame() {
 function showPlayer(show) {
 	ui.player.hidden = !show;
 	ui.library.hidden = show;
-	ui.touch.hidden = !show || !readJson(TOUCH_KEY, prefersTouch());
+	ui.touch.hidden = !show || gamepadCount() > 0 || !readJson(TOUCH_KEY, prefersTouch());
 	ui.hud.hidden = !show || !readJson(HUD_KEY, false);
 	if (show) {
 		requestAnimationFrame(syncCanvasSize);
@@ -228,6 +228,9 @@ function openMenu() {
 	input.enabled = false;
 	emulator.pause();
 	ui.pauseMenu.hidden = false;
+	if (gamepadCount() > 0) {
+		navigateWithPad(1 << Button.DOWN);  // Start on the first item.
+	}
 }
 
 function closeMenu(resume = true) {
@@ -236,7 +239,10 @@ function closeMenu(resume = true) {
 	}
 	menuOpen = false;
 	ui.pauseMenu.hidden = true;
+	ui.pauseMenu.querySelectorAll('.pad-focus').forEach((el) => el.classList.remove('pad-focus'));
 	if (resume && inGame) {
+		// The button that closed the menu is probably still down: the game shouldn't get it.
+		input.ignoreHeldPadButtons();
 		input.enabled = true;
 		emulator.resume();
 	}
@@ -325,13 +331,83 @@ function syncCanvasSize() {
 
 function inputLoop() {
 	if (emulator.module) {
-		const { mask, pressed, stick } = input.poll();
+		const { mask, pressed, padPressed, menu, stick } = input.poll();
 		emulator.addPresses(pressed);
 		emulator.setButtons(mask);
 		emulator.setAnalog(0, stick[0]);
 		emulator.setAnalog(1, stick[1]);
+		if (menu && inGame) {
+			menuOpen ? closeMenu() : openMenu();
+		} else if (padPressed && (menuOpen || openDialog())) {
+			navigateWithPad(padPressed);
+		}
 	}
 	requestAnimationFrame(inputLoop);
+}
+
+// Gamepads
+
+function gamepadCount() {
+	return [...(navigator.getGamepads?.() ?? [])].filter((p) => p && p.connected).length;
+}
+
+function openDialog() {
+	return document.querySelector('dialog[open]');
+}
+
+// Menus and dialogs with a gamepad: up and down move between the controls, left and right change a
+// select, cross picks, circle goes back.
+function navigateWithPad(bits) {
+	const has = (b) => (bits & (1 << b)) !== 0;
+	const panel = openDialog() ?? ui.pauseMenu;
+	const items = [...panel.querySelectorAll('button, select, summary')].filter((el) => el.offsetParent !== null && !el.disabled);
+	if (!items.length) {
+		return;
+	}
+	let index = items.indexOf(document.activeElement);
+	if (has(Button.DOWN) || has(Button.UP)) {
+		index = index < 0 ? 0 : (index + (has(Button.DOWN) ? 1 : items.length - 1)) % items.length;
+		items[index].focus();
+		items.forEach((el) => el.classList.toggle('pad-focus', el === items[index]));
+		return;
+	}
+	const current = items[index];
+	if (current?.tagName === 'SELECT' && (has(Button.LEFT) || has(Button.RIGHT))) {
+		const n = current.options.length;
+		current.selectedIndex = (current.selectedIndex + (has(Button.RIGHT) ? 1 : n - 1)) % n;
+		current.dispatchEvent(new Event('change', { bubbles: true }));
+		return;
+	}
+	if (has(Button.CROSS) && current && current.tagName !== 'SELECT') {
+		current.click();
+		return;
+	}
+	if (has(Button.CIRCLE)) {
+		const dialog = openDialog();
+		if (dialog) {
+			dialog.close();
+		} else {
+			closeMenu();
+		}
+	}
+}
+
+function watchGamepads() {
+	window.addEventListener('gamepadconnected', (e) => {
+		toast(t('gamepadConnected', e.gamepad.id.replace(/\s*\(.*$/, '')));
+		ui.touch.hidden = true;
+	});
+	window.addEventListener('gamepaddisconnected', () => {
+		if (gamepadCount() > 0) {
+			return;
+		}
+		toast(t('gamepadDisconnected'));
+		// Nothing to play with any more: stop rather than let the game run on unattended.
+		if (inGame) {
+			openMenu();
+			ui.touch.hidden = !readJson(TOUCH_KEY, prefersTouch());
+		}
+	});
 }
 
 function formatMB(bytes) {
@@ -518,6 +594,7 @@ function init() {
 	input.attachTouch(ui.touch);
 	new ResizeObserver(syncCanvasSize).observe(ui.canvas);
 	requestAnimationFrame(inputLoop);
+	watchGamepads();
 	startMonitor();
 	emulator.addEventListener('crashed', () => {
 		input.enabled = false;
